@@ -37,3 +37,6 @@ oprettet, status. bane-vaerdier: `fm`, `indkøb` (med oe!), `hr`, `koordinator`.
 
 ## AEndringslog
 - 2026-10-27: Foerste version (bid 1 - vis job). Oprettet af Claude.
+- 2026-10-27: Tilfoejet Dockerfile. Pixas Docker mangler buildx/BuildKit, saa
+  Railpack-build fejlede. Byg i stedet med build strategy = **Dockerfile**
+  (klassisk docker build, ingen buildx noedvendig). Node 20 alpine, port 3000.
