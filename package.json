@@ -1,0 +1,16 @@
+{
+  "name": "jobtavle",
+  "version": "0.1.0",
+  "description": "Torbens jobtavle - viser job fra Supabase (jobagent paa Pixa)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.11.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
