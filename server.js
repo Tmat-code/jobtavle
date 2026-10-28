@@ -119,8 +119,9 @@ function htmlTilTekst(html) {
   h = afkodEntities(h);
   return h
     .replace(/[ \t ]+/g, " ")
-    .replace(/\n[ \t]+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\[[A-Z][A-Za-z0-9]*\.[^\]]*\]/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/(?:\n[ \t]*){2,}/g, "\n\n")
     .trim();
 }
 

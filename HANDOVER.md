@@ -118,7 +118,13 @@ til samtale, ingen interesse.
   navigator.clipboard virker ikke), med manuel kopi-boks som fallback. `raw_tekst`
   tilfoejet til GET /api/jobs. PROJEKT_URL-konstant oeverst i index.html.
 - 2026-10-28: Bid 3 udvidet - knappen henter nu det FULDE opslag server-side.
-  Bevist: Jobindex har kun uddrag, men hr-manager har hele opslaget i raa HTML
-  (ingen JS). Nyt endpoint GET /api/jobs/:id/opslag: Jobindex -> hr-manager-link
-  -> renset opslagstekst (klipper menu vha. jobtitlen som anker). Falder tilbage
-  til RSS-uddrag for systemer der ikke kan hentes. Kun hr-manager bekraeftet.
+  Bevist i drift: Jobindex har kun uddrag, men hr-manager har hele opslaget i raa
+  HTML (ingen JS), og jobtavle-containeren KAN naa ud paa nettet. Nyt endpoint
+  GET /api/jobs/:id/opslag: Jobindex -> hr-manager-link -> renset opslagstekst
+  (klipper menu vha. jobtitlen som anker). Falder tilbage til RSS-uddrag for
+  systemer der ikke kan hentes. Kun hr-manager bekraeftet.
+- 2026-10-28: Renseren strammet - fjerner template-mergefields
+  (`[Project.ContactPerson...]`) og kollapser tomme linjer. Den generiske
+  arbejdsgiver-footer (fx Region H's "Det handler om liv") staar bevidst tilbage:
+  dens markoer skifter pr. virksomhed, saa auto-klip ville risikere at skaere
+  aegte opslag vaek paa andre job.
