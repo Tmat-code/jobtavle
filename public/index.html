@@ -242,18 +242,24 @@
   }
 
   // Bygger den tekst Torben paster ind i CV-projektet for at starte FASE 1.
-  function bygFase1Tekst(j) {
+  // fuldtekst/kilde er med, naar serveren kunne hente hele opslaget; ellers
+  // bruges RSS-uddraget.
+  function bygFase1Tekst(j, fuldtekst, kilde) {
     const baneNavn = BANE_NAVN[j.bane] || j.bane || "";
     const L = [];
     L.push("Ny jobsag - start venligst FASE 1.");
     L.push("");
     L.push("Stilling: " + (j.titel || "(ingen titel)"));
-    L.push("Virksomhed: " + (j.virksomhed ? j.virksomhed : "(fremgår af opslaget - se link)"));
+    L.push("Virksomhed: " + (j.virksomhed ? j.virksomhed : "(fremgår af opslaget)"));
     if (baneNavn) L.push("Bane: " + baneNavn);
-    if (j.url) L.push("Jobopslag: " + j.url);
-    if (j.raw_tekst) {
-      L.push("");
-      L.push("Uddrag fra opslaget:");
+    if (j.url) L.push("Jobopslag (Jobindex): " + j.url);
+    if (kilde) L.push("Fuldt opslag: " + kilde);
+    L.push("");
+    if (fuldtekst) {
+      L.push("--- Fuldt jobopslag ---");
+      L.push(fuldtekst);
+    } else if (j.raw_tekst) {
+      L.push("Uddrag fra opslaget (kun RSS - hele opslaget ligger bag linket):");
       L.push(j.raw_tekst);
     }
     return L.join("\n");
@@ -323,13 +329,44 @@
     ta.select();
   }
 
-  function bygCV(j) {
-    const tekst = bygFase1Tekst(j);
-    const ok = kopierTekst(tekst);
-    // Aabn projektet i samme klik-tick (undgaar popup-blokering).
+  // Henter det fulde opslag fra serveren (med klient-timeout). null hvis det
+  // ikke kunne lade sig goere - saa falder vi tilbage til RSS-uddraget.
+  async function hentFuldtOpslag(id) {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 20000);
+    try {
+      const r = await fetch("/api/jobs/" + id + "/opslag", { signal: ac.signal });
+      const d = await r.json();
+      if (d && d.ok && d.fuldtekst) return { fuldtekst: d.fuldtekst, kilde: d.kilde };
+    } catch (e) { /* falder tilbage */ }
+    finally { clearTimeout(t); }
+    return null;
+  }
+
+  async function bygCV(j, btn) {
+    // Aabn projektet straks paa klik-tick (undgaar popup-blokering),
+    // mens vi henter opslaget.
     if (PROJEKT_URL) window.open(PROJEKT_URL, "_blank", "noopener");
-    if (ok) visToast("FASE 1-tekst kopieret - paste den i CV-projektet");
-    else visManuelKopi(tekst);
+
+    const orgTekst = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Henter ...";
+
+    const fuld = await hentFuldtOpslag(j.id);
+
+    btn.disabled = false;
+    btn.textContent = orgTekst;
+
+    const tekst = bygFase1Tekst(j, fuld && fuld.fuldtekst, fuld && fuld.kilde);
+    const ok = kopierTekst(tekst);
+
+    if (ok) {
+      visToast(fuld
+        ? "Fuldt opslag hentet og kopieret - paste i CV-projektet"
+        : "Uddrag kopieret (hele opslaget kunne ikke hentes) - paste i CV-projektet");
+    } else {
+      visManuelKopi(tekst);
+    }
   }
 
   async function saetStatus(id, nyStatus, selectEl) {
@@ -384,7 +421,7 @@
     sel.addEventListener("change", () => saetStatus(j.id, sel.value, sel));
 
     const bygBtn = wrap.querySelector("button.byg-cv-btn");
-    bygBtn.addEventListener("click", () => bygCV(j));
+    bygBtn.addEventListener("click", () => bygCV(j, bygBtn));
 
     return wrap;
   }

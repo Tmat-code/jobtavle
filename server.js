@@ -81,6 +81,123 @@ app.post("/api/jobs/:id/status", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// "Byg CV": hent det FULDE jobopslag.
+// Databasen har kun RSS-uddraget. Det fulde opslag ligger paa virksomhedens
+// ansoegningssystem, som Jobindex linker videre til. Vi henter Jobindex-siden,
+// finder linket til ansoegningssystemet og henter opslagsteksten derfra.
+// Pt. er kun hr-manager bekraeftet (bruges af bl.a. regioner). Andre systemer
+// (JavaScript-tunge) falder automatisk tilbage til uddraget paa klienten.
+// ---------------------------------------------------------------------------
+
+const JOBINDEX_RE = /jobindex\.dk\/vis-job\//i;
+
+// Afkoder de hyppigste HTML-entities. aeoesaa kommer typisk som ren UTF-8,
+// men de navngivne tages med for en sikkerheds skyld. &amp; afkodes sidst.
+function afkodEntities(s) {
+  return s
+    .replace(/&#(\d+);/g, (_, n) => { try { return String.fromCodePoint(parseInt(n, 10)); } catch (e) { return " "; } })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => { try { return String.fromCodePoint(parseInt(n, 16)); } catch (e) { return " "; } })
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&oslash;/g, "ø").replace(/&Oslash;/g, "Ø")
+    .replace(/&aelig;/g, "æ").replace(/&AElig;/g, "Æ")
+    .replace(/&aring;/g, "å").replace(/&Aring;/g, "Å")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&");
+}
+
+// Goer en HTML-side til laesbar ren tekst.
+function htmlTilTekst(html) {
+  let h = html
+    .replace(/<(script|style|head)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr)[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ");
+  h = afkodEntities(h);
+  return h
+    .replace(/[ \t ]+/g, " ")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// Klipper menu/boilerplate af toppen ved at bruge jobtitlen som anker.
+function klipFraTitel(tekst, titel) {
+  if (!titel) return tekst;
+  const anker = String(titel).trim().split(/\s+/).slice(0, 5).join(" ");
+  if (anker.length < 8) return tekst;
+  const idx = tekst.toLowerCase().indexOf(anker.toLowerCase());
+  return idx > 0 ? tekst.slice(idx).trim() : tekst;
+}
+
+// Henter en URL som tekst, med timeout. Returnerer null ved enhver fejl.
+async function hentHtml(url, timeoutMs) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, {
+      signal: ac.signal,
+      redirect: "follow",
+      headers: { "User-Agent": "Mozilla/5.0 (jobtavle)" },
+    });
+    if (!r.ok) return null;
+    return await r.text();
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+app.get("/api/jobs/:id/opslag", async (req, res) => {
+  const id = String(req.params.id || "");
+  if (!UUID_RE.test(id)) {
+    return res.status(400).json({ ok: false, grund: "ugyldigt id" });
+  }
+  try {
+    // Kun jobbets egen url fra databasen bruges - aldrig en url fra klienten.
+    const q = await pool.query(
+      "SELECT url, titel FROM job_opslag WHERE id = $1",
+      [id]
+    );
+    if (q.rowCount === 0) {
+      return res.status(404).json({ ok: false, grund: "job ikke fundet" });
+    }
+    const { url, titel } = q.rows[0];
+    if (!url || !JOBINDEX_RE.test(url)) {
+      return res.json({ ok: false, grund: "ukendt kilde" });
+    }
+
+    // 1) Jobindex-siden (kun uddrag, men indeholder linket videre).
+    const jiHtml = await hentHtml(url, 12000);
+    if (!jiHtml) return res.json({ ok: false, grund: "kunne ikke hente jobindex" });
+
+    // 2) Find link til ansoegningssystem. Pt. kun hr-manager bekraeftet.
+    const m = jiHtml.match(/https?:\/\/[^\s"'<>]*hr-manager[^\s"'<>]*/i);
+    if (!m) return res.json({ ok: false, grund: "intet kendt opslagslink" });
+    const opslagUrl = m[0].replace(/&amp;/g, "&");
+
+    // 3) Selve opslaget.
+    const hmHtml = await hentHtml(opslagUrl, 12000);
+    if (!hmHtml) return res.json({ ok: false, grund: "kunne ikke hente opslag" });
+
+    // 4) Rens og klip.
+    let tekst = klipFraTitel(htmlTilTekst(hmHtml), titel);
+    if (!tekst || tekst.length < 400) {
+      return res.json({ ok: false, grund: "opslag for kort / ikke fundet" });
+    }
+    if (tekst.length > 20000) tekst = tekst.slice(0, 20000) + "\n\n[...afkortet]";
+
+    res.json({ ok: true, fuldtekst: tekst, kilde: opslagUrl });
+  } catch (err) {
+    console.error("Hent-fejl (opslag):", err.message);
+    res.json({ ok: false, grund: err.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Jobtavle koerer paa port ${port}`);
 });

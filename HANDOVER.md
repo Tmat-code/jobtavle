@@ -24,6 +24,16 @@ er overblikket. Erstatter den gamle Jobtavle-artifact.
   uddrag), kopierer den, og aabner CV-projektet paa claude.ai i en ny fane. Saa
   paster Torben teksten ind og starter jobsagen. IKKE fuldautomatisk - mennesket
   bliver i loopet, API-vejen bevidst fravalgt.
+  - **Fuldt opslag hentes automatisk (naar muligt).** Databasen har kun RSS-
+    uddraget. Nyt endpoint `GET /api/jobs/:id/opslag` henter Jobindex-siden,
+    finder linket videre til virksomhedens ansoegningssystem og henter det FULDE
+    opslag derfra, renset til ren tekst. Knappen lægger saa hele opslaget i
+    FASE 1-teksten. **Kun hr-manager er bekraeftet** (bruges af bl.a. regioner/
+    kommuner - godt for FM-banen). Andre, JavaScript-tunge systemer kan ikke
+    hentes server-side; dér falder knappen automatisk tilbage til RSS-uddraget +
+    link. Toasten siger hvad der skete ("Fuldt opslag hentet" vs. "Uddrag
+    kopieret"). Afhaenger af at jobtavle-containeren selv har udgaaende
+    internetadgang (det har n8n-containeren, saa den har den sandsynligvis ogsaa).
   - **Clipboard-faelde:** siden koerer paa http (ikke secure context), saa
     `navigator.clipboard` virker ikke. Kopiering sker derfor med den aeldre
     `document.execCommand("copy")` (synkron, virker paa http). Gaar selv den galt,
@@ -31,7 +41,10 @@ er overblikket. Erstatter den gamle Jobtavle-artifact.
     klik-tick som kopieringen, saa den ikke popup-blokeres.
   - **Projekt-URL** staar som konstanten `PROJEKT_URL` oeverst i `public/index.html`
     - ret den ene linje hvis projektet flyttes.
-  - `raw_tekst` (RSS-uddraget) kommer nu med i `GET /api/jobs`.
+  - `raw_tekst` (RSS-uddraget) kommer med i `GET /api/jobs` som fallback.
+  - **Tilfoej flere ansoegningssystemer:** i `server.js` leder endpointet efter
+    `hr-manager` i Jobindex-HTML'en. Vil man dække fx Emply, skal man bekraefte at
+    deres opslag staar i raa HTML (ikke JS), og saa udvide det ene regex.
 
 ## Teknik
 - Node + Express. `server.js` serverer `public/index.html` og to endpoints:
@@ -39,6 +52,10 @@ er overblikket. Erstatter den gamle Jobtavle-artifact.
   - `POST /api/jobs/:id/status` body `{status}` - saetter status (+ `status_aendret
     = now()`). Validerer baade id og status mod en hvidliste; ugyldigt = 400.
     Gyldige statusser: ny, interesseret, ansøgt, til samtale, ingen interesse.
+  - `GET /api/jobs/:id/opslag` - henter det fulde jobopslag (Jobindex ->
+    ansoegningssystem -> renset tekst). Bruger KUN jobbets egen url fra databasen,
+    aldrig en url fra klienten (ingen SSRF). Returnerer `{ok, fuldtekst, kilde}`
+    eller `{ok:false, grund}`. Timeout 12s pr. fetch. Pt. kun hr-manager.
 - Taler med databasen som n8n: direkte Postgres, indefra Pixas docker-net.
   Ingen Kong/anon-noegle/ekstern adgang. Kun PGPASSWORD skal saettes; resten
   har standard i koden.
@@ -100,3 +117,8 @@ til samtale, ingen interesse.
   aabner CV-projektet i ny fane. Kopiering via execCommand (siden er paa http, saa
   navigator.clipboard virker ikke), med manuel kopi-boks som fallback. `raw_tekst`
   tilfoejet til GET /api/jobs. PROJEKT_URL-konstant oeverst i index.html.
+- 2026-10-28: Bid 3 udvidet - knappen henter nu det FULDE opslag server-side.
+  Bevist: Jobindex har kun uddrag, men hr-manager har hele opslaget i raa HTML
+  (ingen JS). Nyt endpoint GET /api/jobs/:id/opslag: Jobindex -> hr-manager-link
+  -> renset opslagstekst (klipper menu vha. jobtitlen som anker). Falder tilbage
+  til RSS-uddrag for systemer der ikke kan hentes. Kun hr-manager bekraeftet.
