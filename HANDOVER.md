@@ -45,6 +45,24 @@ er overblikket. Erstatter den gamle Jobtavle-artifact.
   - **Tilfoej flere ansoegningssystemer:** i `server.js` leder endpointet efter
     `hr-manager` i Jobindex-HTML'en. Vil man dække fx Emply, skal man bekraefte at
     deres opslag staar i raa HTML (ikke JS), og saa udvide det ene regex.
+- **Bid 4: match-score.** FAERDIG. Hvert job faar en grov match-score baseret paa
+  noegleord fra Torbens profil (loeft-ord) og anti-ord for fag han ikke har
+  (koek/kok/sosu/haandvaerker-fag osv.). Vist som en lille farvet prik pr. kort
+  (groen=staerk, okker=middel, graa=svag; score i hover-title). En skifter oeverst
+  vaelger visning: **"Nyeste foerst"** (som hidtil, grupperet pr. bane) eller
+  **"Bedste match foerst"** (flad liste, hoejeste score oeverst, bane som maerkat).
+  - **VIGTIGT princip:** scoren SORTERER kun - den skjuler ALDRIG noget. Alle job
+    er altid synlige; de svage ligger bare nederst. (Kun den manuelle "ingen
+    interesse" skjuler, og det kan hentes frem igen.)
+  - **Noegleordslisterne staar oeverst i `server.js`** (LOEFT_KERNE, LOEFT_KOMPETENCE,
+    LOEFT_MAAL, LOEFT_BRANCHE, SAENK) + vaegtene i `VAEGT`. Bevidst lette at rette.
+    Score beregnes server-side ved hver load (ingen DB-aendring), paa titel +
+    RSS-uddrag. Korte ord (fm/hr/sla) kraever helt-ord-match; laengere maa matche
+    ord der starter med dem (saa "indkøb" ogsaa fanger "indkøber").
+  - **Farvetaersklerne** (staerk >=8, middel >=1, svag <=0) staar i `scoreNiveau`
+    i index.html.
+  - Naeste mulige opgradering (hvis for upraecist): semantisk match med embeddings
+    + pgvector paa Supabase - kan koere paa Pixas CPU, ingen GPU noedvendig.
 
 ## Teknik
 - Node + Express. `server.js` serverer `public/index.html` og to endpoints:
@@ -128,3 +146,9 @@ til samtale, ingen interesse.
   arbejdsgiver-footer (fx Region H's "Det handler om liv") staar bevidst tilbage:
   dens markoer skifter pr. virksomhed, saa auto-klip ville risikere at skaere
   aegte opslag vaek paa andre job.
+- 2026-10-28: Bid 4 - match-score pr. job (noegleord fra profil, loeft/saenk),
+  vist som farvet prik. Skifter oeverst: "Nyeste foerst" / "Bedste match foerst".
+  Scoren SORTERER kun, skjuler intet. Noegleordslister + vaegte oeverst i
+  server.js; farvetaersklerne i index.html (scoreNiveau). GET /api/jobs
+  returnerer nu ogsaa `score` pr. job. Salg ladt neutralt (ude af begge lister)
+  som udgangspunkt - kan tilfoejes til SAENK hvis oensket.

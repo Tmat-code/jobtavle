@@ -31,9 +31,87 @@ const GYLDIGE_STATUS = [
   "ingen interesse",
 ];
 
+// ---------------------------------------------------------------------------
+// Match-score. Et groft, gratis signal der SORTERER job - det skjuler aldrig
+// noget. Byg paa Torbens dokumenterede profil (brutto-CV + maalbaner).
+// Listerne er bevidst lette at redigere: tilfoej/fjern ord, flyt mellem loeft
+// og saenk, eller ret vaegtene nedenfor.
+// ---------------------------------------------------------------------------
+
+const LOEFT_KERNE = [
+  "leverandør", "leverandørstyring", "supplier", "vendor", "srm", "sourcing",
+  "indkøb", "procurement", "kontrakt", "contract manager", "category",
+];
+const LOEFT_KOMPETENCE = [
+  "forhandling", "sla", "kpi", "governance", "compliance", "kvalitetssikring",
+  "stakeholder", "udbud", "performance management", "procesoptimering",
+  "leverandøraftaler",
+];
+const LOEFT_MAAL = [
+  "facility management", "facility", "fm", "drift", "servicekoordinator",
+  "koordinator", "teamkoordinator", "administrativ koordinator", "operations",
+  "hr", "rekruttering",
+];
+const LOEFT_BRANCHE = ["forsikring", "skade", "skadeservice", "taksator", "ejendom"];
+const SAENK = [
+  "kok", "køkkenleder", "ernæringsassistent", "smørrebrød", "slagter", "bager",
+  "sygeplejerske", "sosu", "social- og sundhedsassistent", "jordemoder",
+  "fysioterapeut", "ergoterapeut", "elektriker", "tømrer", "murer", "vvs",
+  "mekaniker", "chauffør", "lærer", "pædagog", "softwareudvikler", "developer",
+  "programmør",
+];
+
+const VAEGT = { kerne: 3, kompetence: 2, maal: 2, branche: 1, saenk: 2, titelBonus: 2 };
+
+// Deler tekst op i ord (bogstaver/tal, aeoesaa inkluderet).
+function tilTokens(tekst) {
+  return (String(tekst || "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
+}
+
+// Taeller hvor mange ord fra en liste der findes i teksten.
+// Korte ord (<=3 tegn, fx fm/hr/sla) kraever et HELT ord-match, saa de ikke
+// rammer tilfaeldige bogstaver inde i andre ord. Laengere ord maa gerne matche
+// et ord der STARTER med dem (saa "indkøb" ogsaa fanger "indkøber"). Fraser
+// (med mellemrum) matches med ord-graenser i hele teksten.
+function taelMatch(ordListe, heleTekst, tokenSet, tokenArr) {
+  let hits = 0;
+  for (const ord of ordListe) {
+    if (ord.includes(" ")) {
+      const esc = ord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (new RegExp("(^|[^\\p{L}])" + esc + "([^\\p{L}]|$)", "u").test(heleTekst)) hits++;
+    } else if (ord.length <= 3) {
+      if (tokenSet.has(ord)) hits++;
+    } else if (tokenArr.some((t) => t.startsWith(ord))) {
+      hits++;
+    }
+  }
+  return hits;
+}
+
+function beregnScore(job) {
+  const titel = String(job.titel || "").toLowerCase();
+  const heleTekst = titel + " \n " + String(job.raw_tekst || "").toLowerCase();
+
+  const tTokens = tilTokens(titel);
+  const tSet = new Set(tTokens);
+  const aTokens = tilTokens(heleTekst);
+  const aSet = new Set(aTokens);
+
+  let s = 0;
+  s += VAEGT.kerne * taelMatch(LOEFT_KERNE, heleTekst, aSet, aTokens);
+  s += VAEGT.kompetence * taelMatch(LOEFT_KOMPETENCE, heleTekst, aSet, aTokens);
+  s += VAEGT.maal * taelMatch(LOEFT_MAAL, heleTekst, aSet, aTokens);
+  s += VAEGT.branche * taelMatch(LOEFT_BRANCHE, heleTekst, aSet, aTokens);
+  s -= VAEGT.saenk * taelMatch(SAENK, heleTekst, aSet, aTokens);
+  // Ord i selve titlen vejer ekstra - det er det staerkeste signal.
+  s += VAEGT.titelBonus * taelMatch([...LOEFT_KERNE, ...LOEFT_MAAL], titel, tSet, tTokens);
+  s -= VAEGT.titelBonus * taelMatch(SAENK, titel, tSet, tTokens);
+  return s;
+}
+
 app.use(express.static(path.join(__dirname, "public")));
 
-// Henter alle job, nyeste foerst.
+// Henter alle job, nyeste foerst. Hvert job faar en match-score med.
 app.get("/api/jobs", async (req, res) => {
   try {
     const result = await pool.query(
@@ -41,7 +119,8 @@ app.get("/api/jobs", async (req, res) => {
          FROM job_opslag
         ORDER BY oprettet DESC`
     );
-    res.json({ ok: true, jobs: result.rows });
+    const jobs = result.rows.map((j) => ({ ...j, score: beregnScore(j) }));
+    res.json({ ok: true, jobs });
   } catch (err) {
     console.error("DB-fejl:", err.message);
     res.status(500).json({ ok: false, error: err.message });

@@ -23,6 +23,10 @@
     --st-samtale-soft: #ece2f6;
     --st-afvist: #9a8f84;
     --st-afvist-soft: #efe9e2;
+    /* match-score (jordnaere toner) */
+    --sc-staerk: #5f7d4a;
+    --sc-middel: #c58a3e;
+    --sc-svag: #cabcae;
   }
   * { box-sizing: border-box; }
   body {
@@ -57,6 +61,25 @@
   }
   .toggle-afviste:hover { border-color: var(--accent); color: var(--ink); }
   .toggle-afviste.aktiv { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  /* sorterings-skifter: Nyeste foerst / Bedste match foerst */
+  .sorter {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--card);
+  }
+  .sort-btn {
+    font-size: 13px;
+    font-family: inherit;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    padding: 5px 13px;
+    cursor: pointer;
+  }
+  .sort-btn:hover { color: var(--ink); }
+  .sort-btn.aktiv { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
   main { max-width: 820px; margin: 0 auto; padding: 8px 16px 48px; }
   .bane-group { margin-top: 24px; }
   .bane-head {
@@ -85,6 +108,28 @@
   .job[data-status="ansøgt"] { border-left-color: var(--st-ansøgt); }
   .job[data-status="til samtale"] { border-left-color: var(--st-samtale); }
   .job[data-status="ingen interesse"] { border-left-color: var(--st-afvist); opacity: 0.72; }
+  /* match-prik til venstre for titlen */
+  .score-prik {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 6px;
+    background: var(--sc-svag);
+  }
+  .score-prik[data-niveau="staerk"] { background: var(--sc-staerk); }
+  .score-prik[data-niveau="middel"] { background: var(--sc-middel); }
+  /* bane-mærkat (vises i "Bedste match"-visningen, hvor banerne ikke er grupperet) */
+  .bane-tag {
+    display: inline-block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 0 7px;
+    border-radius: 999px;
+    margin-right: 6px;
+  }
   .job-venstre { min-width: 0; flex: 1; }
   .job-link { text-decoration: none; color: inherit; display: block; min-width: 0; }
   .job-link:hover .job-titel { color: var(--accent); }
@@ -198,6 +243,10 @@
     <h1>Jobtavle</h1>
     <div class="sub" id="sub">Henter job ...</div>
     <div class="topbar">
+      <div class="sorter" id="sorter">
+        <button class="sort-btn aktiv" data-sort="nyeste" type="button">Nyeste først</button>
+        <button class="sort-btn" data-sort="match" type="button">Bedste match først</button>
+      </div>
       <button class="toggle-afviste" id="toggleAfviste" type="button">Vis afviste</button>
     </div>
   </header>
@@ -227,6 +276,16 @@
 
   let alleJobs = [];
   let visAfviste = false;
+  let sorterMode = "nyeste"; // "nyeste" (som hidtil) eller "match"
+
+  // Oversaetter score til et niveau for prik-farven. Taersklerne er lette at
+  // justere her.
+  function scoreNiveau(s) {
+    if (s == null) return "svag";
+    if (s >= 8) return "staerk";
+    if (s >= 1) return "middel";
+    return "svag";
+  }
 
   function fmtDato(s) {
     if (!s) return "";
@@ -389,33 +448,45 @@
     }
   }
 
-  function jobKort(j) {
+  function jobKort(j, visBane) {
     const status = j.status || "ny";
-    const meta = [j.virksomhed, fmtDato(j.oprettet)].filter(Boolean).join(" · ");
+    const niveau = scoreNiveau(j.score);
     const visBadge = status !== "ny";
+
+    const metaBits = [j.virksomhed, fmtDato(j.oprettet)].filter(Boolean).join(" · ");
+    const baneTag = visBane
+      ? '<span class="bane-tag">' + esc(BANE_NAVN[j.bane] || j.bane || "") + "</span>"
+      : "";
+    const metaHtml = (baneTag || metaBits)
+      ? '<div class="job-meta">' + baneTag + esc(metaBits) + "</div>"
+      : "";
 
     const wrap = document.createElement("div");
     wrap.className = "job";
     wrap.setAttribute("data-status", status);
 
-    let venstre =
+    const prik =
+      '<span class="score-prik" data-niveau="' + niveau +
+      '" title="Match-score: ' + (j.score == null ? "-" : j.score) + '"></span>';
+
+    const venstre =
       '<a class="job-link" href="' + esc(j.url || "#") + '" target="_blank" rel="noopener">' +
       '<div class="job-titel">' + esc(j.titel || "(uden titel)") + "</div>" +
-      (meta ? '<div class="job-meta">' + esc(meta) + "</div>" : "") +
+      metaHtml +
       "</a>";
 
-    let optioner = STATUS_VALG.map(
+    const optioner = STATUS_VALG.map(
       (s) => '<option value="' + s.v + '"' + (s.v === status ? " selected" : "") + ">" + s.t + "</option>"
     ).join("");
 
-    let hoejre =
+    const hoejre =
       '<div class="job-hoejre">' +
       (visBadge ? '<span class="status-badge" data-status="' + status + '">' + STATUS_TEKST[status] + "</span>" : "") +
       '<select class="status-vaelger">' + optioner + "</select>" +
       '<button class="byg-cv-btn" type="button">Byg CV</button>' +
       "</div>";
 
-    wrap.innerHTML = '<div class="job-venstre">' + venstre + "</div>" + hoejre;
+    wrap.innerHTML = prik + '<div class="job-venstre">' + venstre + "</div>" + hoejre;
 
     const sel = wrap.querySelector("select.status-vaelger");
     sel.addEventListener("change", () => saetStatus(j.id, sel.value, sel));
@@ -445,6 +516,21 @@
       return;
     }
 
+    // "Bedste match først": én flad liste, hoejeste score oeverst. Intet
+    // skjules - de svage ligger bare nederst. Bane vises som maerkat paa kortet.
+    if (sorterMode === "match") {
+      const sorteret = synlige.slice().sort(
+        (a, b) => (b.score || 0) - (a.score || 0) ||
+                  (new Date(b.oprettet) - new Date(a.oprettet))
+      );
+      const sec = document.createElement("section");
+      sec.className = "bane-group";
+      for (const j of sorteret) sec.appendChild(jobKort(j, true));
+      main.appendChild(sec);
+      return;
+    }
+
+    // "Nyeste først" (standard): grupperet efter bane, nyeste oeverst.
     const orden = ["fm", "indkøb", "hr", "koordinator"];
     const grupper = {};
     for (const j of synlige) {
@@ -462,7 +548,7 @@
       h.className = "bane-head";
       h.textContent = BANE_NAVN[b] || b;
       sec.appendChild(h);
-      for (const j of grupper[b]) sec.appendChild(jobKort(j));
+      for (const j of grupper[b]) sec.appendChild(jobKort(j, false));
       main.appendChild(sec);
     }
   }
@@ -501,6 +587,14 @@
     visAfviste = !visAfviste;
     this.classList.toggle("aktiv", visAfviste);
     this.textContent = visAfviste ? "Skjul afviste" : "Vis afviste";
+    tegn();
+  });
+
+  document.getElementById("sorter").addEventListener("click", function (e) {
+    const btn = e.target.closest(".sort-btn");
+    if (!btn) return;
+    sorterMode = btn.getAttribute("data-sort");
+    this.querySelectorAll(".sort-btn").forEach((b) => b.classList.toggle("aktiv", b === btn));
     tegn();
   });
 
