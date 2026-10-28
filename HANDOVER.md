@@ -91,6 +91,24 @@ er overblikket. Erstatter den gamle Jobtavle-artifact.
     sider - "Bedste match først" er isaer nyttig paa Øvrige, som er stor/stoejende.
   - **Ny kolonne:** `job_opslag.bred boolean DEFAULT false`. SELECT i /api/jobs
     henter den defensivt (falder tilbage hvis kolonnen mangler).
+  - **`bane` gjort NULLABLE:** den havde en NOT NULL-constraint, saa brede job
+    (bane=NULL) fejlede foerst. Rettet med
+    `ALTER TABLE job_opslag ALTER COLUMN bane DROP NOT NULL;`.
+  - **Digest (Telegram):** den brede agents upsert skal IKKE forbindes til digest,
+    og digest-SQL'en skal have `AND bane IS NOT NULL` i `nye`-CTE'en, saa de mange
+    brede job ikke tælles i morgenbeskeden. (Se Digest-node-afsnittet.)
+  - **RSS-loft:** Jobindex RSS giver max 20 opslag pr. feed, saa den brede agent
+    henter kun de 20 nyeste pr. koersel - den akkumulerer over tid, men bliver
+    aldrig "alle job i 40 km" (hverken muligt via RSS eller oenskeligt - for meget
+    stoej).
+- **Bid 6: repost-dedup.** Jobindex reposter job med NYT guid, saa guid-dedup
+  fanger dem ikke. Loest i VISNINGEN (klient, ikke-destruktivt): job med samme
+  normaliserede titel (`normTitel`: lowercase, fjern "Genopslag:"-forstavelse,
+  kollaps mellemrum) vises som ét. En markeret dublet (status != ny) vinder - saa
+  et afvist job ikke dukker op igen som nyt; ellers vises nyeste. Kortet viser
+  "+N genopslag" naar der er skjulte. Gaelder begge sider. Intet slettes.
+  - **Grænse:** kan i sjaeldne tilfaelde skjule et aegte nyt job med identisk
+    titel (falsk positiv). Lav risiko, da titler oftest har firmanavnet i sig.
 
 ## Teknik
 - Node + Express. `server.js` serverer `public/index.html` og to endpoints:
@@ -201,5 +219,9 @@ Haeng paa Schedule- og Manual-triggerne som de fire andre.
 - 2026-10-28: Bid 5 - bred agent + "Øvrige"-side. Ny kolonne `bred`. Den brede
   agent saetter bred=true og roerer ikke bane, saa dubletter med de skarpe baner
   loeser sig selv (faellesjob beholder deres bane -> vises paa banen, ikke Øvrige).
-  "Mine baner / Øvrige"-skifter paa tavlen. Jobtavle-koden deployet; selve
-  n8n-noden tilfoejes separat (se "Bred agent (n8n)").
+  "Mine baner / Øvrige"-skifter paa tavlen. n8n-node bygget og i drift (RSS Bred
+  + Upsert Bred, 20 items testet groen). bane gjort NULLABLE (havde NOT NULL).
+  Digest-SQL faar `AND bane IS NOT NULL` saa Telegram ikke tæller brede job.
+- 2026-10-28: Bid 6 - repost-dedup i visningen. Reposts (nyt guid, samme titel)
+  samles paa normaliseret titel og vises som ét ("+N genopslag"). Markeret/afvist
+  dublet vinder. Ikke-destruktivt.

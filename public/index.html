@@ -506,7 +506,8 @@
     const niveau = scoreNiveau(j.score);
     const visBadge = status !== "ny";
 
-    const metaBits = [j.virksomhed, fmtDato(j.oprettet)].filter(Boolean).join(" · ");
+    const dubletTekst = j._dubletter > 0 ? "+" + j._dubletter + " genopslag" : "";
+    const metaBits = [j.virksomhed, fmtDato(j.oprettet), dubletTekst].filter(Boolean).join(" · ");
     const baneTag = visBane
       ? '<span class="bane-tag">' + esc(BANE_NAVN[j.bane] || j.bane || "") + "</span>"
       : "";
@@ -551,14 +552,52 @@
     return wrap;
   }
 
+  // Normaliserer en titel saa reposts matcher originalen: lowercase, fjern
+  // "Genopslag:"-forstavelse (Jobindex skriver den selv), kollaps mellemrum.
+  function normTitel(t) {
+    return String(t || "")
+      .toLowerCase()
+      .replace(/^\s*genopslag:\s*/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  // Samler job med samme titel (reposts) og viser kun ÉN pr. titel. Intet
+  // slettes - de andre skjules bare. En markeret dublet (status != ny) vinder,
+  // saa et job man fx har afvist ikke dukker op igen som "nyt"; ellers vises
+  // det nyeste. _dubletter tæller hvor mange der blev skjult.
+  function dedupTitel(jobs) {
+    const grupper = new Map();
+    const unikke = [];
+    for (const j of jobs) {
+      j._dubletter = 0;
+      const key = normTitel(j.titel);
+      if (!key) { unikke.push(j); continue; }
+      if (!grupper.has(key)) grupper.set(key, []);
+      grupper.get(key).push(j);
+    }
+    for (const gruppe of grupper.values()) {
+      const markerede = gruppe.filter((j) => (j.status || "ny") !== "ny");
+      const valgt = (markerede.length ? markerede : gruppe)
+        .slice()
+        .sort((a, b) => new Date(b.oprettet) - new Date(a.oprettet))[0];
+      valgt._dubletter = gruppe.length - 1;
+      unikke.push(valgt);
+    }
+    return unikke;
+  }
+
   function tegn() {
     const main = document.getElementById("main");
     const sub = document.getElementById("sub");
     main.innerHTML = "";
 
     // Filtrér til den aktive side: "baner" = de fire skarpe, "oevrige" = alt andet.
-    const paaSiden = alleJobs.filter((j) =>
-      sideMode === "oevrige" ? !FOKUSEREDE.includes(j.bane) : FOKUSEREDE.includes(j.bane)
+    // Dedup reposts (samme titel) bagefter, saa kun én version vises.
+    const paaSiden = dedupTitel(
+      alleJobs.filter((j) =>
+        sideMode === "oevrige" ? !FOKUSEREDE.includes(j.bane) : FOKUSEREDE.includes(j.bane)
+      )
     );
 
     // Afviste skjules medmindre knappen er slaaet til.
