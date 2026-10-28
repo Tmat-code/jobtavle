@@ -126,6 +126,71 @@
   }
   .msg.error { border-left: 3px solid var(--accent); color: var(--ink); }
   code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+
+  /* "Byg CV"-knap pr. jobkort */
+  .byg-cv-btn {
+    font-size: 12px;
+    font-family: inherit;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    padding: 3px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .byg-cv-btn:hover { background: #9e4728; border-color: #9e4728; }
+  .byg-cv-btn:active { transform: translateY(1px); }
+
+  /* lille bekraeftelse nederst */
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    background: var(--ink);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 999px;
+    font-size: 14px;
+    box-shadow: 0 4px 14px rgba(43, 38, 34, 0.22);
+    z-index: 50;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .toast.vis { opacity: 1; }
+
+  /* fallback: manuel kopi-boks hvis automatisk kopiering ikke kan */
+  .kopi-overlay {
+    position: fixed; inset: 0;
+    background: rgba(43, 38, 34, 0.45);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 60; padding: 16px;
+  }
+  .kopi-boks {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 18px;
+    max-width: 560px; width: 100%;
+    box-shadow: 0 8px 30px rgba(43, 38, 34, 0.25);
+  }
+  .kopi-boks h3 { margin: 0 0 6px; font-size: 16px; }
+  .kopi-boks p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+  .kopi-boks textarea {
+    width: 100%; height: 220px;
+    font-family: inherit; font-size: 13px;
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px; resize: vertical;
+  }
+  .kopi-boks .luk {
+    margin-top: 10px;
+    border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink);
+    padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    font-family: inherit; font-size: 13px;
+  }
+  .kopi-boks .luk:hover { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -139,6 +204,10 @@
   <main id="main"></main>
 
 <script>
+  // CV-projektet paa claude.ai. "Byg CV" aabner denne i en ny fane.
+  // Ret den ene linje her hvis projekt-URL'en er en anden.
+  const PROJEKT_URL = "https://claude.ai/project/01a0d762-8e95-70b9-b0fd-8c6ea16802c3";
+
   const BANE_NAVN = {
     fm: "Facility Management",
     "indkøb": "Indkøb",
@@ -170,6 +239,97 @@
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  // Bygger den tekst Torben paster ind i CV-projektet for at starte FASE 1.
+  function bygFase1Tekst(j) {
+    const baneNavn = BANE_NAVN[j.bane] || j.bane || "";
+    const L = [];
+    L.push("Ny jobsag - start venligst FASE 1.");
+    L.push("");
+    L.push("Stilling: " + (j.titel || "(ingen titel)"));
+    L.push("Virksomhed: " + (j.virksomhed ? j.virksomhed : "(fremgår af opslaget - se link)"));
+    if (baneNavn) L.push("Bane: " + baneNavn);
+    if (j.url) L.push("Jobopslag: " + j.url);
+    if (j.raw_tekst) {
+      L.push("");
+      L.push("Uddrag fra opslaget:");
+      L.push(j.raw_tekst);
+    }
+    return L.join("\n");
+  }
+
+  // Kopiering der ogsaa virker paa http (ikke secure context), hvor
+  // navigator.clipboard typisk ikke er tilgaengelig. Returnerer true/false.
+  function kopierTekst(tekst) {
+    // execCommand er synkront og virker paa http - foretrukket her.
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = tekst;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.top = "-1000px";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, tekst.length);
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if (ok) return true;
+    } catch (e) { /* falder igennem til fallback */ }
+    return false;
+  }
+
+  let toastTimer = null;
+  function visToast(tekst) {
+    let el = document.getElementById("toast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "toast";
+      el.className = "toast";
+      document.body.appendChild(el);
+    }
+    el.textContent = tekst;
+    // force reflow saa transition koerer hver gang
+    void el.offsetWidth;
+    el.classList.add("vis");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("vis"), 2600);
+  }
+
+  // Sidste udvej: vis teksten saa den kan markeres og kopieres i haanden.
+  function visManuelKopi(tekst) {
+    const overlay = document.createElement("div");
+    overlay.className = "kopi-overlay";
+    const boks = document.createElement("div");
+    boks.className = "kopi-boks";
+    const h = document.createElement("h3");
+    h.textContent = "Kopiér teksten";
+    const p = document.createElement("p");
+    p.textContent = "Automatisk kopiering gik ikke. Markér alt (teksten er valgt) og tryk Ctrl/Cmd+C.";
+    const ta = document.createElement("textarea");
+    ta.value = tekst;
+    ta.setAttribute("readonly", "");
+    const luk = document.createElement("button");
+    luk.className = "luk";
+    luk.textContent = "Luk";
+    luk.addEventListener("click", () => document.body.removeChild(overlay));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) document.body.removeChild(overlay); });
+    boks.appendChild(h); boks.appendChild(p); boks.appendChild(ta); boks.appendChild(luk);
+    overlay.appendChild(boks);
+    document.body.appendChild(overlay);
+    ta.focus();
+    ta.select();
+  }
+
+  function bygCV(j) {
+    const tekst = bygFase1Tekst(j);
+    const ok = kopierTekst(tekst);
+    // Aabn projektet i samme klik-tick (undgaar popup-blokering).
+    if (PROJEKT_URL) window.open(PROJEKT_URL, "_blank", "noopener");
+    if (ok) visToast("FASE 1-tekst kopieret - paste den i CV-projektet");
+    else visManuelKopi(tekst);
   }
 
   async function saetStatus(id, nyStatus, selectEl) {
@@ -215,12 +375,16 @@
       '<div class="job-hoejre">' +
       (visBadge ? '<span class="status-badge" data-status="' + status + '">' + STATUS_TEKST[status] + "</span>" : "") +
       '<select class="status-vaelger">' + optioner + "</select>" +
+      '<button class="byg-cv-btn" type="button">Byg CV</button>' +
       "</div>";
 
     wrap.innerHTML = '<div class="job-venstre">' + venstre + "</div>" + hoejre;
 
     const sel = wrap.querySelector("select.status-vaelger");
     sel.addEventListener("change", () => saetStatus(j.id, sel.value, sel));
+
+    const bygBtn = wrap.querySelector("button.byg-cv-btn");
+    bygBtn.addEventListener("click", () => bygCV(j));
 
     return wrap;
   }

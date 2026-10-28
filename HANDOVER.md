@@ -19,13 +19,23 @@ er overblikket. Erstatter den gamle Jobtavle-artifact.
   "Ingen interesse" skjuler jobbet fra standardvisningen; en "Vis afviste"-knap
   oeverst henter dem frem igen. Titlen er linket til opslaget; vaelgeren ved siden
   trigger ikke linket.
-- **Bid 3 (senere): "Byg CV"-knap** - kopierer jobbet i FASE 1-format + aabner
-  CV-bygger-projektet, saa Torben kan paste og starte en jobsag. IKKE
-  fuldautomatisk - mennesket bliver i loopet.
+- **Bid 3: "Byg CV"-knap.** FAERDIG. Hvert jobkort har en "Byg CV"-knap. Klik
+  bygger en FASE 1-tekst (stilling, virksomhed, bane, link til opslaget + RSS-
+  uddrag), kopierer den, og aabner CV-projektet paa claude.ai i en ny fane. Saa
+  paster Torben teksten ind og starter jobsagen. IKKE fuldautomatisk - mennesket
+  bliver i loopet, API-vejen bevidst fravalgt.
+  - **Clipboard-faelde:** siden koerer paa http (ikke secure context), saa
+    `navigator.clipboard` virker ikke. Kopiering sker derfor med den aeldre
+    `document.execCommand("copy")` (synkron, virker paa http). Gaar selv den galt,
+    vises en manuel kopi-boks med teksten valgt. `window.open` kaldes i samme
+    klik-tick som kopieringen, saa den ikke popup-blokeres.
+  - **Projekt-URL** staar som konstanten `PROJEKT_URL` oeverst i `public/index.html`
+    - ret den ene linje hvis projektet flyttes.
+  - `raw_tekst` (RSS-uddraget) kommer nu med i `GET /api/jobs`.
 
 ## Teknik
 - Node + Express. `server.js` serverer `public/index.html` og to endpoints:
-  - `GET /api/jobs` - laeser alle job fra Postgres (nu inkl. `id`).
+  - `GET /api/jobs` - laeser alle job fra Postgres (nu inkl. `id` og `raw_tekst`).
   - `POST /api/jobs/:id/status` body `{status}` - saetter status (+ `status_aendret
     = now()`). Validerer baade id og status mod en hvidliste; ugyldigt = 400.
     Gyldige statusser: ny, interesseret, ansøgt, til samtale, ingen interesse.
@@ -86,3 +96,7 @@ til samtale, ingen interesse.
 - 2026-10-28: Bid 2 - statusvaelger pr. job (ny/interesseret/ansøgt/til samtale/
   ingen interesse), gemt i `status` + `status_aendret`. Afviste skjules, "Vis
   afviste"-knap. Farvemarkering pr. status. Nyt endpoint POST /api/jobs/:id/status.
+- 2026-10-28: Bid 3 - "Byg CV"-knap pr. jobkort. Kopierer en FASE 1-tekst og
+  aabner CV-projektet i ny fane. Kopiering via execCommand (siden er paa http, saa
+  navigator.clipboard virker ikke), med manuel kopi-boks som fallback. `raw_tekst`
+  tilfoejet til GET /api/jobs. PROJEKT_URL-konstant oeverst i index.html.

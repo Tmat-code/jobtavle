@@ -37,7 +37,7 @@ app.use(express.static(path.join(__dirname, "public")));
 app.get("/api/jobs", async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, bane, titel, virksomhed, url, oprettet, status
+      `SELECT id, bane, titel, virksomhed, url, oprettet, status, raw_tekst
          FROM job_opslag
         ORDER BY oprettet DESC`
     );
