@@ -68,8 +68,8 @@ sidst sete (`$getWorkflowStaticData('global')`) -> ved nyt commit: POST
 uden manuelt Redeploy-klik. Kraever at repoet er **public** (ellers 404 fra GitHub).
 
 ## Database (reference)
-Tabel `job_opslag`. Relevante kolonner her: id, bane, titel, virksomhed, url,
-oprettet, status, status_aendret. bane-vaerdier: `fm`, `indkøb` (med oe!), `hr`,
+Tabel `job_opslag`. Relevante kolonner her: id (**UUID**, ikke heltal), bane,
+titel, virksomhed, url, oprettet, status, status_aendret. bane-vaerdier: `fm`, `indkøb` (med oe!), `hr`,
 `koordinator`. status-vaerdier siden bruger: ny (default), interesseret, ansøgt,
 til samtale, ingen interesse.
 

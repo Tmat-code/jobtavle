@@ -49,11 +49,14 @@ app.get("/api/jobs", async (req, res) => {
 });
 
 // Saetter status paa et job. Body: { status: "interesseret" }
+// id er en UUID (tekst), ikke et heltal.
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
 app.post("/api/jobs/:id/status", async (req, res) => {
-  const id = Number(req.params.id);
+  const id = String(req.params.id || "");
   const status = (req.body && req.body.status) || "";
 
-  if (!Number.isInteger(id)) {
+  if (!UUID_RE.test(id)) {
     return res.status(400).json({ ok: false, error: "Ugyldigt job-id" });
   }
   if (!GYLDIGE_STATUS.includes(status)) {
