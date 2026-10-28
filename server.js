@@ -10,6 +10,8 @@ const path = require("path");
 const app = express();
 const port = process.env.PORT || 3000;
 
+app.use(express.json());
+
 const pool = new Pool({
   host: process.env.PGHOST || "supabase-db-asmzli3ytzonaxou4fmfalee",
   port: Number(process.env.PGPORT || 5432),
@@ -20,19 +22,58 @@ const pool = new Pool({
   ssl: false,
 });
 
+// Tilladte statusser. Siden maa kun saette en af disse.
+const GYLDIGE_STATUS = [
+  "ny",
+  "interesseret",
+  "ansøgt",
+  "til samtale",
+  "ingen interesse",
+];
+
 app.use(express.static(path.join(__dirname, "public")));
 
 // Henter alle job, nyeste foerst.
 app.get("/api/jobs", async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT bane, titel, virksomhed, url, oprettet, status
+      `SELECT id, bane, titel, virksomhed, url, oprettet, status
          FROM job_opslag
         ORDER BY oprettet DESC`
     );
     res.json({ ok: true, jobs: result.rows });
   } catch (err) {
     console.error("DB-fejl:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Saetter status paa et job. Body: { status: "interesseret" }
+app.post("/api/jobs/:id/status", async (req, res) => {
+  const id = Number(req.params.id);
+  const status = (req.body && req.body.status) || "";
+
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ ok: false, error: "Ugyldigt job-id" });
+  }
+  if (!GYLDIGE_STATUS.includes(status)) {
+    return res.status(400).json({ ok: false, error: "Ugyldig status" });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE job_opslag
+          SET status = $1, status_aendret = now()
+        WHERE id = $2
+      RETURNING id, status`,
+      [status, id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: "Job ikke fundet" });
+    }
+    res.json({ ok: true, job: result.rows[0] });
+  } catch (err) {
+    console.error("DB-fejl (status):", err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 });

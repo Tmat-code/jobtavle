@@ -14,6 +14,15 @@
     --accent: #b5532f;
     --accent-soft: #f3e4db;
     --shadow: 0 1px 2px rgba(43, 38, 34, 0.06);
+    /* status-farver */
+    --st-interesseret: #2f7d4f;
+    --st-interesseret-soft: #e2f0e7;
+    --st-ansøgt: #2f5fb5;
+    --st-ansøgt-soft: #e1e9f6;
+    --st-samtale: #8a5cc4;
+    --st-samtale-soft: #ece2f6;
+    --st-afvist: #9a8f84;
+    --st-afvist-soft: #efe9e2;
   }
   * { box-sizing: border-box; }
   body {
@@ -30,6 +39,24 @@
   }
   h1 { font-size: 24px; margin: 0 0 4px; }
   .sub { color: var(--muted); font-size: 14px; }
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .toggle-afviste {
+    font-size: 13px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--muted);
+    padding: 5px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .toggle-afviste:hover { border-color: var(--accent); color: var(--ink); }
+  .toggle-afviste.aktiv { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
   main { max-width: 820px; margin: 0 auto; padding: 8px 16px 48px; }
   .bane-group { margin-top: 24px; }
   .bane-head {
@@ -41,30 +68,54 @@
     margin: 0 0 8px;
   }
   .job {
-    display: block;
     background: var(--card);
     border: 1px solid var(--line);
     border-left: 3px solid var(--accent);
     border-radius: 10px;
     padding: 12px 14px;
     margin-bottom: 8px;
-    text-decoration: none;
-    color: inherit;
     box-shadow: var(--shadow);
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    justify-content: space-between;
   }
-  .job:hover { border-color: var(--accent); }
+  /* venstre farvekant skifter med status */
+  .job[data-status="interesseret"] { border-left-color: var(--st-interesseret); }
+  .job[data-status="ansøgt"] { border-left-color: var(--st-ansøgt); }
+  .job[data-status="til samtale"] { border-left-color: var(--st-samtale); }
+  .job[data-status="ingen interesse"] { border-left-color: var(--st-afvist); opacity: 0.72; }
+  .job-venstre { min-width: 0; flex: 1; }
+  .job-link { text-decoration: none; color: inherit; display: block; min-width: 0; }
+  .job-link:hover .job-titel { color: var(--accent); }
   .job-titel { font-weight: 600; font-size: 15px; }
   .job-meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
-  .status {
+  .job-hoejre { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .status-badge {
     display: inline-block;
     font-size: 11px;
     padding: 1px 8px;
     border-radius: 999px;
     background: var(--accent-soft);
     color: var(--accent);
-    margin-left: 6px;
-    vertical-align: middle;
+    white-space: nowrap;
   }
+  .status-badge[data-status="interesseret"] { background: var(--st-interesseret-soft); color: var(--st-interesseret); }
+  .status-badge[data-status="ansøgt"] { background: var(--st-ansøgt-soft); color: var(--st-ansøgt); }
+  .status-badge[data-status="til samtale"] { background: var(--st-samtale-soft); color: var(--st-samtale); }
+  .status-badge[data-status="ingen interesse"] { background: var(--st-afvist-soft); color: var(--st-afvist); }
+  select.status-vaelger {
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 3px 6px;
+    cursor: pointer;
+  }
+  select.status-vaelger:hover { border-color: var(--accent); }
+  select.status-vaelger:disabled { opacity: 0.5; cursor: default; }
   .msg {
     margin-top: 24px;
     padding: 16px;
@@ -81,6 +132,9 @@
   <header>
     <h1>Jobtavle</h1>
     <div class="sub" id="sub">Henter job ...</div>
+    <div class="topbar">
+      <button class="toggle-afviste" id="toggleAfviste" type="button">Vis afviste</button>
+    </div>
   </header>
   <main id="main"></main>
 
@@ -92,11 +146,124 @@
     koordinator: "Koordinator",
   };
 
+  // Status-valgmuligheder i dropdownen. Vaerdien skal matche server + database.
+  const STATUS_VALG = [
+    { v: "ny", t: "Ny" },
+    { v: "interesseret", t: "Interesseret" },
+    { v: "ansøgt", t: "Ansøgt" },
+    { v: "til samtale", t: "Til samtale" },
+    { v: "ingen interesse", t: "Ingen interesse" },
+  ];
+  const STATUS_TEKST = Object.fromEntries(STATUS_VALG.map((s) => [s.v, s.t]));
+
+  let alleJobs = [];
+  let visAfviste = false;
+
   function fmtDato(s) {
     if (!s) return "";
     const d = new Date(s);
     if (isNaN(d)) return "";
     return d.toLocaleDateString("da-DK", { day: "numeric", month: "short" });
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  async function saetStatus(id, nyStatus, selectEl) {
+    selectEl.disabled = true;
+    try {
+      const r = await fetch("/api/jobs/" + id + "/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nyStatus }),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || "ukendt fejl");
+      // Opdatér lokal kopi og tegn om, saa afviste evt. forsvinder/dukker op.
+      const job = alleJobs.find((j) => String(j.id) === String(id));
+      if (job) job.status = nyStatus;
+      tegn();
+    } catch (e) {
+      selectEl.disabled = false;
+      alert("Kunne ikke gemme status: " + e.message);
+    }
+  }
+
+  function jobKort(j) {
+    const status = j.status || "ny";
+    const meta = [j.virksomhed, fmtDato(j.oprettet)].filter(Boolean).join(" · ");
+    const visBadge = status !== "ny";
+
+    const wrap = document.createElement("div");
+    wrap.className = "job";
+    wrap.setAttribute("data-status", status);
+
+    let venstre =
+      '<a class="job-link" href="' + esc(j.url || "#") + '" target="_blank" rel="noopener">' +
+      '<div class="job-titel">' + esc(j.titel || "(uden titel)") + "</div>" +
+      (meta ? '<div class="job-meta">' + esc(meta) + "</div>" : "") +
+      "</a>";
+
+    let optioner = STATUS_VALG.map(
+      (s) => '<option value="' + s.v + '"' + (s.v === status ? " selected" : "") + ">" + s.t + "</option>"
+    ).join("");
+
+    let hoejre =
+      '<div class="job-hoejre">' +
+      (visBadge ? '<span class="status-badge" data-status="' + status + '">' + STATUS_TEKST[status] + "</span>" : "") +
+      '<select class="status-vaelger">' + optioner + "</select>" +
+      "</div>";
+
+    wrap.innerHTML = '<div class="job-venstre">' + venstre + "</div>" + hoejre;
+
+    const sel = wrap.querySelector("select.status-vaelger");
+    sel.addEventListener("change", () => saetStatus(j.id, sel.value, sel));
+
+    return wrap;
+  }
+
+  function tegn() {
+    const main = document.getElementById("main");
+    const sub = document.getElementById("sub");
+    main.innerHTML = "";
+
+    // Afviste skjules medmindre knappen er slaaet til.
+    const synlige = alleJobs.filter(
+      (j) => visAfviste || (j.status || "ny") !== "ingen interesse"
+    );
+    const antalAfviste = alleJobs.filter((j) => (j.status || "ny") === "ingen interesse").length;
+
+    sub.textContent =
+      synlige.length + " job" + (antalAfviste ? "  ·  " + antalAfviste + " afvist" : "");
+
+    if (synlige.length === 0) {
+      main.innerHTML = '<div class="msg">Ingen job at vise.</div>';
+      return;
+    }
+
+    const orden = ["fm", "indkøb", "hr", "koordinator"];
+    const grupper = {};
+    for (const j of synlige) {
+      const b = j.bane || "andet";
+      (grupper[b] = grupper[b] || []).push(j);
+    }
+    const baner = orden.filter((b) => grupper[b]).concat(
+      Object.keys(grupper).filter((b) => !orden.includes(b))
+    );
+
+    for (const b of baner) {
+      const sec = document.createElement("section");
+      sec.className = "bane-group";
+      const h = document.createElement("h2");
+      h.className = "bane-head";
+      h.textContent = BANE_NAVN[b] || b;
+      sec.appendChild(h);
+      for (const j of grupper[b]) sec.appendChild(jobKort(j));
+      main.appendChild(sec);
+    }
   }
 
   async function load() {
@@ -110,56 +277,31 @@
         sub.textContent = "Kunne ikke hente job";
         main.innerHTML =
           '<div class="msg error"><strong>Databasen svarede ikke.</strong><br>' +
-          "Fejl: <code>" + (data.error || "ukendt") + "</code></div>";
+          "Fejl: <code>" + esc(data.error || "ukendt") + "</code></div>";
         return;
       }
 
-      const jobs = data.jobs || [];
-      sub.textContent = jobs.length + " job i databasen";
-
-      if (jobs.length === 0) {
+      alleJobs = data.jobs || [];
+      if (alleJobs.length === 0) {
+        sub.textContent = "0 job i databasen";
         main.innerHTML = '<div class="msg">Ingen job i databasen endnu.</div>';
         return;
       }
-
-      // Gruppér efter bane i fast rækkefølge.
-      const orden = ["fm", "indkøb", "hr", "koordinator"];
-      const grupper = {};
-      for (const j of jobs) {
-        const b = j.bane || "andet";
-        (grupper[b] = grupper[b] || []).push(j);
-      }
-
-      let html = "";
-      const baner = orden.filter((b) => grupper[b]).concat(
-        Object.keys(grupper).filter((b) => !orden.includes(b))
-      );
-
-      for (const b of baner) {
-        html += '<section class="bane-group">';
-        html += '<h2 class="bane-head">' + (BANE_NAVN[b] || b) + "</h2>";
-        for (const j of grupper[b]) {
-          const meta = [j.virksomhed, fmtDato(j.oprettet)].filter(Boolean).join(" · ");
-          const status =
-            j.status && j.status !== "ny"
-              ? '<span class="status">' + j.status + "</span>"
-              : "";
-          html +=
-            '<a class="job" href="' + (j.url || "#") + '" target="_blank" rel="noopener">' +
-            '<div class="job-titel">' + (j.titel || "(uden titel)") + status + "</div>" +
-            (meta ? '<div class="job-meta">' + meta + "</div>" : "") +
-            "</a>";
-        }
-        html += "</section>";
-      }
-      main.innerHTML = html;
+      tegn();
     } catch (e) {
       sub.textContent = "Kunne ikke hente job";
       main.innerHTML =
         '<div class="msg error"><strong>Siden kunne ikke tale med serveren.</strong><br>' +
-        "Fejl: <code>" + e.message + "</code></div>";
+        "Fejl: <code>" + esc(e.message) + "</code></div>";
     }
   }
+
+  document.getElementById("toggleAfviste").addEventListener("click", function () {
+    visAfviste = !visAfviste;
+    this.classList.toggle("aktiv", visAfviste);
+    this.textContent = visAfviste ? "Skjul afviste" : "Vis afviste";
+    tegn();
+  });
 
   load();
 </script>
