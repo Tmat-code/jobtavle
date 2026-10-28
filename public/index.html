@@ -80,6 +80,26 @@
   }
   .sort-btn:hover { color: var(--ink); }
   .sort-btn.aktiv { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  /* side-skifter: Mine baner / Øvrige (hovednavigation) */
+  .sider {
+    display: inline-flex;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--card);
+  }
+  .side-btn {
+    font-size: 13px;
+    font-family: inherit;
+    border: none;
+    background: transparent;
+    color: var(--accent);
+    padding: 5px 14px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .side-btn:hover { background: var(--accent-soft); }
+  .side-btn.aktiv { background: var(--accent); color: #fff; font-weight: 600; }
   main { max-width: 820px; margin: 0 auto; padding: 8px 16px 48px; }
   .bane-group { margin-top: 24px; }
   .bane-head {
@@ -257,6 +277,10 @@
     <h1>Jobtavle</h1>
     <div class="sub" id="sub">Henter job ...</div>
     <div class="topbar">
+      <div class="sider" id="sider">
+        <button class="side-btn aktiv" data-side="baner" type="button">Mine baner</button>
+        <button class="side-btn" data-side="oevrige" type="button">Øvrige</button>
+      </div>
       <div class="sorter" id="sorter">
         <button class="sort-btn aktiv" data-sort="nyeste" type="button">Nyeste først</button>
         <button class="sort-btn" data-sort="match" type="button">Bedste match først</button>
@@ -288,9 +312,13 @@
   ];
   const STATUS_TEKST = Object.fromEntries(STATUS_VALG.map((s) => [s.v, s.t]));
 
+  // De fire skarpe baner. Alt andet (brede fund uden bane) hoerer til "Øvrige".
+  const FOKUSEREDE = ["fm", "indkøb", "hr", "koordinator"];
+
   let alleJobs = [];
   let visAfviste = false;
   let sorterMode = "nyeste"; // "nyeste" (som hidtil) eller "match"
+  let sideMode = "baner";    // "baner" (de fire) eller "oevrige" (brede fund)
 
   // Oversaetter score til et niveau for prik-farven. Taersklerne er lette at
   // justere her.
@@ -528,35 +556,50 @@
     const sub = document.getElementById("sub");
     main.innerHTML = "";
 
+    // Filtrér til den aktive side: "baner" = de fire skarpe, "oevrige" = alt andet.
+    const paaSiden = alleJobs.filter((j) =>
+      sideMode === "oevrige" ? !FOKUSEREDE.includes(j.bane) : FOKUSEREDE.includes(j.bane)
+    );
+
     // Afviste skjules medmindre knappen er slaaet til.
-    const synlige = alleJobs.filter(
+    const synlige = paaSiden.filter(
       (j) => visAfviste || (j.status || "ny") !== "ingen interesse"
     );
-    const antalAfviste = alleJobs.filter((j) => (j.status || "ny") === "ingen interesse").length;
+    const antalAfviste = paaSiden.filter((j) => (j.status || "ny") === "ingen interesse").length;
 
     sub.textContent =
       synlige.length + " job" + (antalAfviste ? "  ·  " + antalAfviste + " afvist" : "");
 
     if (synlige.length === 0) {
-      main.innerHTML = '<div class="msg">Ingen job at vise.</div>';
+      main.innerHTML =
+        '<div class="msg">' +
+        (sideMode === "oevrige"
+          ? "Ingen brede job endnu. De dukker op, når den brede agent har kørt."
+          : "Ingen job at vise.") +
+        "</div>";
       return;
     }
 
-    // "Bedste match først": én flad liste, hoejeste score oeverst. Intet
-    // skjules - de svage ligger bare nederst. Bane vises som maerkat paa kortet.
-    if (sorterMode === "match") {
-      const sorteret = synlige.slice().sort(
-        (a, b) => (b.score || 0) - (a.score || 0) ||
-                  (new Date(b.oprettet) - new Date(a.oprettet))
-      );
+    // Flad liste bruges ved "Bedste match først" OG altid paa Øvrige-siden
+    // (brede job har ingen bane at gruppere efter). Intet skjules - de svage
+    // ligger bare nederst.
+    if (sorterMode === "match" || sideMode === "oevrige") {
+      const sorteret = synlige.slice().sort((a, b) => {
+        if (sorterMode === "match") {
+          return (b.score || 0) - (a.score || 0) ||
+                 (new Date(b.oprettet) - new Date(a.oprettet));
+        }
+        return new Date(b.oprettet) - new Date(a.oprettet);
+      });
+      const visBane = sideMode !== "oevrige"; // bane-maerkat kun paa baner-siden
       const sec = document.createElement("section");
       sec.className = "bane-group";
-      for (const j of sorteret) sec.appendChild(jobKort(j, true));
+      for (const j of sorteret) sec.appendChild(jobKort(j, visBane));
       main.appendChild(sec);
       return;
     }
 
-    // "Nyeste først" (standard): grupperet efter bane, nyeste oeverst.
+    // Baner-siden, "Nyeste først": grupperet efter bane, nyeste oeverst.
     const orden = ["fm", "indkøb", "hr", "koordinator"];
     const grupper = {};
     for (const j of synlige) {
@@ -621,6 +664,14 @@
     if (!btn) return;
     sorterMode = btn.getAttribute("data-sort");
     this.querySelectorAll(".sort-btn").forEach((b) => b.classList.toggle("aktiv", b === btn));
+    tegn();
+  });
+
+  document.getElementById("sider").addEventListener("click", function (e) {
+    const btn = e.target.closest(".side-btn");
+    if (!btn) return;
+    sideMode = btn.getAttribute("data-side");
+    this.querySelectorAll(".side-btn").forEach((b) => b.classList.toggle("aktiv", b === btn));
     tegn();
   });
 

@@ -126,13 +126,27 @@ function beregnScore(job) {
 app.use(express.static(path.join(__dirname, "public")));
 
 // Henter alle job, nyeste foerst. Hvert job faar en match-score med.
+// Henter ogsaa 'bred' (markerer job fundet af den brede agent). Hvis kolonnen
+// endnu ikke findes (foer ALTER TABLE er koert), falder vi tilbage uden den,
+// saa tavlen ikke crasher i mellemtiden.
 app.get("/api/jobs", async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT id, bane, titel, virksomhed, url, oprettet, status, raw_tekst
-         FROM job_opslag
-        ORDER BY oprettet DESC`
-    );
+    let result;
+    try {
+      result = await pool.query(
+        `SELECT id, bane, titel, virksomhed, url, oprettet, status, raw_tekst,
+                COALESCE(bred, false) AS bred
+           FROM job_opslag
+          ORDER BY oprettet DESC`
+      );
+    } catch (e) {
+      result = await pool.query(
+        `SELECT id, bane, titel, virksomhed, url, oprettet, status, raw_tekst
+           FROM job_opslag
+          ORDER BY oprettet DESC`
+      );
+      result.rows.forEach((r) => { r.bred = false; });
+    }
     const jobs = result.rows.map((j) => {
       const r = beregnScore(j);
       return { ...j, score: r.score, loeft: r.loeft, saenk: r.saenk };

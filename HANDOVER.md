@@ -71,6 +71,26 @@ er overblikket. Erstatter den gamle Jobtavle-artifact.
     kravsteksten, ikke kun overskriften.
   - Naeste mulige opgradering (hvis for upraecist): semantisk match med embeddings
     + pgvector paa Supabase - kan koere paa Pixas CPU, ingen GPU noedvendig.
+    (Lagt paa hylden 28.10: den grove score + manuel vurdering i CV-projektet er
+    nok; profilen er for bred til at et "top-5" er realistisk. Embedding-API ville
+    koste faa kroner/aar - ikke samme regnestykke som generativ LLM - men ikke
+    bygget.)
+- **Bid 5: bred agent + "Øvrige"-side.** En femte, BRED jobagent paa Jobindex
+  UDEN titelsoegning (kun geografi: 40 km fra Lejre, fuldtid, fast) fanger
+  stillinger hvor Torbens kompetencer passer under en utraditionel titel. De
+  vises paa en separat **"Øvrige"-side** paa tavlen - og dubletter med de fire
+  skarpe baner undgaas.
+  - **Dedup-model (vigtig):** den brede agents upsert saetter `bred=true` og
+    **roerer ikke `bane`**. De fire skarpe feeds saetter bane som hidtil. Saa et
+    job der KUN er bredt faar bane=NULL -> Øvrige; et job der OGSAA fanges skarpt
+    faar sin bane -> den bane, ikke Øvrige. Rækkefoelge-uafhaengigt, fordi de to
+    aldrig roerer hinandens felter.
+  - **Tavlen:** "Mine baner / Øvrige"-skifter oeverst. Baner-siden =
+    bane IN (fm,indkøb,hr,koordinator). Øvrige-siden = alt andet (bane NULL), vist
+    som flad liste (ingen baner at gruppere). Match-score + sortering gaelder begge
+    sider - "Bedste match først" er isaer nyttig paa Øvrige, som er stor/stoejende.
+  - **Ny kolonne:** `job_opslag.bred boolean DEFAULT false`. SELECT i /api/jobs
+    henter den defensivt (falder tilbage hvis kolonnen mangler).
 
 ## Teknik
 - Node + Express. `server.js` serverer `public/index.html` og to endpoints:
@@ -122,9 +142,25 @@ uden manuelt Redeploy-klik. Kraever at repoet er **public** (ellers 404 fra GitH
 
 ## Database (reference)
 Tabel `job_opslag`. Relevante kolonner her: id (**UUID**, ikke heltal), bane,
-titel, virksomhed, url, oprettet, status, status_aendret. bane-vaerdier: `fm`, `indkøb` (med oe!), `hr`,
-`koordinator`. status-vaerdier siden bruger: ny (default), interesseret, ansøgt,
-til samtale, ingen interesse.
+titel, virksomhed, url, oprettet, status, status_aendret, **bred** (boolean,
+default false - sat af den brede agent). bane-vaerdier: `fm`, `indkøb` (med oe!),
+`hr`, `koordinator`, samt **NULL** for rent brede job. status-vaerdier siden
+bruger: ny (default), interesseret, ansøgt, til samtale, ingen interesse.
+
+Tilfoej bred-kolonnen (engang):
+```
+docker exec -i supabase-db-asmzli3ytzonaxou4fmfalee psql -U postgres -d postgres \
+  -c "ALTER TABLE job_opslag ADD COLUMN IF NOT EXISTS bred boolean DEFAULT false;"
+```
+
+## Bred agent (n8n) - reference
+Femte RSS-feed UDEN titelsoegning (bredt sikkerhedsnet). URL:
+`https://www.jobindex.dk/jobsoegning.rss?address=Degnejorden+83%2C+H%C3%B8jby%2C+4320+Lejre&employment_type=1&radius=40&workinghours_type=1`
+Ny RSS Read-node + ny upsert-node ("Insert or Update", table job_opslag,
+**Column to match on = jobindex_guid**). Mapping: jobindex_guid<-guid, titel<-title,
+url<-link, raw_tekst<-contentSnippet, indrykket<-isoDate, **bred = true (fast)**.
+VIGTIGT: map IKKE `bane` i denne node - saa bevarer faellesjob deres skarpe bane.
+Haeng paa Schedule- og Manual-triggerne som de fire andre.
 
 ## AEndringslog
 - 2026-10-27: Foerste version (bid 1 - vis job). Oprettet af Claude.
@@ -160,3 +196,10 @@ til samtale, ingen interesse.
   server.js; farvetaersklerne i index.html (scoreNiveau). GET /api/jobs
   returnerer nu ogsaa `score` pr. job. Salg ladt neutralt (ude af begge lister)
   som udgangspunkt - kan tilfoejes til SAENK hvis oensket.
+- 2026-10-28: Bid 4 - gennemsigtighed: signal-linje pr. kort viser score + de
+  loeft-/saenk-ord den bygger paa. GET /api/jobs returnerer `loeft`/`saenk`.
+- 2026-10-28: Bid 5 - bred agent + "Øvrige"-side. Ny kolonne `bred`. Den brede
+  agent saetter bred=true og roerer ikke bane, saa dubletter med de skarpe baner
+  loeser sig selv (faellesjob beholder deres bane -> vises paa banen, ikke Øvrige).
+  "Mine baner / Øvrige"-skifter paa tavlen. Jobtavle-koden deployet; selve
+  n8n-noden tilfoejes separat (se "Bred agent (n8n)").
