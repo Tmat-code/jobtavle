@@ -61,6 +61,14 @@ er overblikket. Erstatter den gamle Jobtavle-artifact.
     ord der starter med dem (saa "indkøb" ogsaa fanger "indkøber").
   - **Farvetaersklerne** (staerk >=8, middel >=1, svag <=0) staar i `scoreNiveau`
     i index.html.
+  - **Gennemsigtighed:** hvert kort viser en signal-linje "Match <score>" + de
+    loeft-ord (groen) og saenk-ord (roed) der udloeste den. GET /api/jobs
+    returnerer `loeft` og `saenk` pr. job, saa Torben kan se HVAD scoren bygger
+    paa og justere listerne derefter.
+  - **Begraensning:** scoren bygger pt. KUN paa titel + RSS-uddrag, ikke hele
+    opslaget. Oplagt opgradering: gem fuldteksten pr. job (ny kolonne, fyldt ved
+    indsaettelse eller lazy) og score paa den - saa ser matchet hele
+    kravsteksten, ikke kun overskriften.
   - Naeste mulige opgradering (hvis for upraecist): semantisk match med embeddings
     + pgvector paa Supabase - kan koere paa Pixas CPU, ingen GPU noedvendig.
 

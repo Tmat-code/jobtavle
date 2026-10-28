@@ -68,26 +68,30 @@ function tilTokens(tekst) {
   return (String(tekst || "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
 }
 
-// Taeller hvor mange ord fra en liste der findes i teksten.
+// Finder hvilke ord fra en liste der er i teksten (returnerer dem, saa vi kan
+// vise paa tavlen HVAD der blev scoret paa).
 // Korte ord (<=3 tegn, fx fm/hr/sla) kraever et HELT ord-match, saa de ikke
 // rammer tilfaeldige bogstaver inde i andre ord. Laengere ord maa gerne matche
 // et ord der STARTER med dem (saa "indkøb" ogsaa fanger "indkøber"). Fraser
 // (med mellemrum) matches med ord-graenser i hele teksten.
-function taelMatch(ordListe, heleTekst, tokenSet, tokenArr) {
-  let hits = 0;
+function findMatch(ordListe, heleTekst, tokenSet, tokenArr) {
+  const fundne = [];
   for (const ord of ordListe) {
+    let hit = false;
     if (ord.includes(" ")) {
       const esc = ord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      if (new RegExp("(^|[^\\p{L}])" + esc + "([^\\p{L}]|$)", "u").test(heleTekst)) hits++;
+      hit = new RegExp("(^|[^\\p{L}])" + esc + "([^\\p{L}]|$)", "u").test(heleTekst);
     } else if (ord.length <= 3) {
-      if (tokenSet.has(ord)) hits++;
-    } else if (tokenArr.some((t) => t.startsWith(ord))) {
-      hits++;
+      hit = tokenSet.has(ord);
+    } else {
+      hit = tokenArr.some((t) => t.startsWith(ord));
     }
+    if (hit) fundne.push(ord);
   }
-  return hits;
+  return fundne;
 }
 
+// Returnerer { score, loeft: [...], saenk: [...] } - tallet OG hvad det bygger paa.
 function beregnScore(job) {
   const titel = String(job.titel || "").toLowerCase();
   const heleTekst = titel + " \n " + String(job.raw_tekst || "").toLowerCase();
@@ -97,16 +101,26 @@ function beregnScore(job) {
   const aTokens = tilTokens(heleTekst);
   const aSet = new Set(aTokens);
 
-  let s = 0;
-  s += VAEGT.kerne * taelMatch(LOEFT_KERNE, heleTekst, aSet, aTokens);
-  s += VAEGT.kompetence * taelMatch(LOEFT_KOMPETENCE, heleTekst, aSet, aTokens);
-  s += VAEGT.maal * taelMatch(LOEFT_MAAL, heleTekst, aSet, aTokens);
-  s += VAEGT.branche * taelMatch(LOEFT_BRANCHE, heleTekst, aSet, aTokens);
-  s -= VAEGT.saenk * taelMatch(SAENK, heleTekst, aSet, aTokens);
+  const kerne = findMatch(LOEFT_KERNE, heleTekst, aSet, aTokens);
+  const komp = findMatch(LOEFT_KOMPETENCE, heleTekst, aSet, aTokens);
+  const maal = findMatch(LOEFT_MAAL, heleTekst, aSet, aTokens);
+  const branche = findMatch(LOEFT_BRANCHE, heleTekst, aSet, aTokens);
+  const saenk = findMatch(SAENK, heleTekst, aSet, aTokens);
+
+  let s =
+    VAEGT.kerne * kerne.length +
+    VAEGT.kompetence * komp.length +
+    VAEGT.maal * maal.length +
+    VAEGT.branche * branche.length -
+    VAEGT.saenk * saenk.length;
+
   // Ord i selve titlen vejer ekstra - det er det staerkeste signal.
-  s += VAEGT.titelBonus * taelMatch([...LOEFT_KERNE, ...LOEFT_MAAL], titel, tSet, tTokens);
-  s -= VAEGT.titelBonus * taelMatch(SAENK, titel, tSet, tTokens);
-  return s;
+  const titelLoeft = findMatch([...LOEFT_KERNE, ...LOEFT_MAAL], titel, tSet, tTokens);
+  const titelSaenk = findMatch(SAENK, titel, tSet, tTokens);
+  s += VAEGT.titelBonus * titelLoeft.length - VAEGT.titelBonus * titelSaenk.length;
+
+  const loeft = [...new Set([...kerne, ...komp, ...maal, ...branche])];
+  return { score: s, loeft, saenk };
 }
 
 app.use(express.static(path.join(__dirname, "public")));
@@ -119,7 +133,10 @@ app.get("/api/jobs", async (req, res) => {
          FROM job_opslag
         ORDER BY oprettet DESC`
     );
-    const jobs = result.rows.map((j) => ({ ...j, score: beregnScore(j) }));
+    const jobs = result.rows.map((j) => {
+      const r = beregnScore(j);
+      return { ...j, score: r.score, loeft: r.loeft, saenk: r.saenk };
+    });
     res.json({ ok: true, jobs });
   } catch (err) {
     console.error("DB-fejl:", err.message);

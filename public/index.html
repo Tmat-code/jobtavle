@@ -130,6 +130,20 @@
     border-radius: 999px;
     margin-right: 6px;
   }
+  /* signal-linje: score + hvilke ord den bygger paa */
+  .signal {
+    margin-top: 5px;
+    font-size: 11.5px;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px 6px;
+    align-items: baseline;
+  }
+  .signal .score-tal { font-weight: 600; color: var(--ink); }
+  .signal .ord-loeft { color: var(--sc-staerk); }
+  .signal .ord-saenk { color: #a23e2a; }
+  .signal .ingen { font-style: italic; }
   .job-venstre { min-width: 0; flex: 1; }
   .job-link { text-decoration: none; color: inherit; display: block; min-width: 0; }
   .job-link:hover .job-titel { color: var(--accent); }
@@ -285,6 +299,17 @@
     if (s >= 8) return "staerk";
     if (s >= 1) return "middel";
     return "svag";
+  }
+
+  // Lille linje der viser score + hvilke ord den bygger paa.
+  function signalLinje(j) {
+    const dele = ['<span class="score-tal">Match ' + (j.score == null ? "-" : j.score) + "</span>"];
+    (j.loeft || []).forEach((o) => dele.push('<span class="ord-loeft">' + esc(o) + "</span>"));
+    (j.saenk || []).forEach((o) => dele.push('<span class="ord-saenk">− ' + esc(o) + "</span>"));
+    if ((!j.loeft || j.loeft.length === 0) && (!j.saenk || j.saenk.length === 0)) {
+      dele.push('<span class="ingen">ingen nøgleord</span>');
+    }
+    return '<div class="signal">' + dele.join("") + "</div>";
   }
 
   function fmtDato(s) {
@@ -473,7 +498,8 @@
       '<a class="job-link" href="' + esc(j.url || "#") + '" target="_blank" rel="noopener">' +
       '<div class="job-titel">' + esc(j.titel || "(uden titel)") + "</div>" +
       metaHtml +
-      "</a>";
+      "</a>" +
+      signalLinje(j);
 
     const optioner = STATUS_VALG.map(
       (s) => '<option value="' + s.v + '"' + (s.v === status ? " selected" : "") + ">" + s.t + "</option>"
