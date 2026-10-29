@@ -59,6 +59,12 @@ const SAENK = [
   "fysioterapeut", "ergoterapeut", "elektriker", "tømrer", "murer", "vvs",
   "mekaniker", "chauffør", "lærer", "pædagog", "softwareudvikler", "developer",
   "programmør",
+  // Rene håndværker-/teknikerstillinger (man står selv med værktøjet) - ikke
+  // FM-koordinering. Tilføjet 29.10 fordi fx "Køletekniker, Four FM" scorede 6
+  // paa firmanavnet "Four FM" + "drift". NB: ikke "tekniker" alene - det ville
+  // ramme "Teknisk driftskoordinator", som er et godt match.
+  "køletekniker", "ventilationstekniker", "servicetekniker", "montør",
+  "blikkenslager", "maler",
 ];
 
 const VAEGT = { kerne: 3, kompetence: 2, maal: 2, branche: 1, saenk: 2, titelBonus: 2 };

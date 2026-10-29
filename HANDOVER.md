@@ -225,3 +225,10 @@ Haeng paa Schedule- og Manual-triggerne som de fire andre.
 - 2026-10-28: Bid 6 - repost-dedup i visningen. Reposts (nyt guid, samme titel)
   samles paa normaliseret titel og vises som ét ("+N genopslag"). Markeret/afvist
   dublet vinder. Ikke-destruktivt.
+- 2026-10-29: SAENK udvidet med rene haandvaerker-/teknikerstillinger
+  (koeletekniker, ventilationstekniker, servicetekniker, montoer, blikkenslager,
+  maler). Aarsag: fx "Koeletekniker, Four FM" scorede 6 paa firmanavnet "Four FM"
+  (maal-ord fm) + "drift" + titelbonus - falsk positiv. Nu 6->2. BEVIDST ikke
+  "tekniker" alene: det ville ramme "Teknisk driftskoordinator" (et godt match,
+  uaendret 10->12). Testet mod de faktiske FM-opslag: teknikerne faldt, alle gode
+  match uroert. Kun SAENK-listen i server.js aendret, intet andet.
